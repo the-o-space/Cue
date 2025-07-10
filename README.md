@@ -28,21 +28,28 @@ cp .env.example .env
 # Edit .env with your API keys
 ```
 
-3. Install and run backend:
+3. Install dependencies and run in development mode:
 ```bash
-cd backend
-uv sync
-uvicorn server:app --host 0.0.0.0 --port 8001 --reload
-```
-
-4. Install and run frontend:
-```bash
-cd frontend
 npm install
-npm run dev -- --host 0.0.0.0
+npm run dev
 ```
 
-5. Open http://localhost:5173 in your browser
+4. Open http://localhost:5173 in your browser
+
+## Production Deployment
+
+Build and deploy to production:
+```bash
+npm run build   # Build both frontend and backend
+npm run prod    # Deploy to production (nginx + systemctl)
+```
+
+Monitor and manage production:
+```bash
+npm run status  # Check backend service status
+npm run logs    # View backend logs
+npm run restart # Restart backend service and reload nginx
+```
 
 ## GitHub Gallery Feature
 
