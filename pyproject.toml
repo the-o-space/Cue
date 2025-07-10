@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cue"
+version = "0.1.0"
+description = "Experimental generative art using sentiment analysis"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "anthropic>=0.25.0",
+    "pillow>=10.0.0",
+    "numpy>=1.26.0",
+    "python-dotenv>=1.0.0",
+    "matplotlib>=3.8.0",
+    "scipy>=1.11.0",
+]
+
+[project.scripts]
+cue = "main:main"
+generate = "main:generate"
+batch = "main:batch"
+test = "main:test"
+info = "main:info"
+browse = "main:browse"
+show = "main:show"
+
+[tool.setuptools]
+py-modules = [
+    "main",
+    "sentiment_analyzer", 
+    "art_generator",
+    "noise_algorithms",
+    "parameter_mapper",
+    "config"
+]
