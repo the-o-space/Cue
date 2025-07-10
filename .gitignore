@@ -1,5 +1,6 @@
 # Generated art and logs
 output/
+# Note: gallery/ is NOT ignored - it's pushed to the repository!
 
 # Environment variables
 .env

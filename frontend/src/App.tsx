@@ -3,25 +3,47 @@ import { useState } from 'react';
 function App() {
   const [text, setText] = useState('');
   const [loading, setLoading] = useState(false);
-  const [imageUrl, setImageUrl] = useState<string | null>(null);
-  const [sentiment, setSentiment] = useState<any>(null);
+  const [images, setImages] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [submitted, setSubmitted] = useState(false);
+  const [showSecret, setShowSecret] = useState(false);
+  const [secretKey, setSecretKey] = useState('');
+
+  // Listen for cmd+/ or ctrl+/
+  const handleGlobalKeyPress = (e: KeyboardEvent) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === '/') {
+      e.preventDefault();
+      setShowSecret(!showSecret);
+    }
+  };
+
+  // Add global key listener
+  useState(() => {
+    document.addEventListener('keydown', handleGlobalKeyPress);
+    return () => document.removeEventListener('keydown', handleGlobalKeyPress);
+  });
 
   const generateArt = async () => {
     if (!text.trim()) return;
 
     setLoading(true);
     setError(null);
-    setImageUrl(null);
-    setSentiment(null);
+    setImages([]);
+    setSubmitted(true);
 
     try {
+      const body: any = { text };
+      // Include secret key if provided
+      if (secretKey.trim()) {
+        body.secret_key = secretKey;
+      }
+
       const response = await fetch('/api/generate', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify(body),
       });
 
       if (!response.ok) {
@@ -29,110 +51,93 @@ function App() {
       }
 
       const data = await response.json();
-      setImageUrl(data.image_url);
-      setSentiment(data.sentiment_scores);
+      setImages(data.images);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong');
+      setSubmitted(false);
     } finally {
       setLoading(false);
     }
   };
 
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      generateArt();
+    }
+  };
+
   return (
-    <div className="min-h-screen p-8 max-w-4xl mx-auto">
-      <header className="mb-12">
-        <h1 className="text-2xl font-normal mb-2">Cue</h1>
-        <p className="text-gray-600">Transform text into abstract art through sentiment analysis</p>
-      </header>
-
-      <main className="space-y-8">
-        {/* Input Section */}
-        <div className="space-y-4">
-          <label htmlFor="text-input" className="block text-sm text-gray-700">
-            Enter your text
-          </label>
-          <textarea
-            id="text-input"
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            placeholder="Type anything — a thought, feeling, or description..."
-            className="w-full h-32 p-4 border border-gray-300 rounded-none resize-none focus:outline-none focus:ring-2 focus:ring-black focus:ring-offset-2"
-            disabled={loading}
-          />
-          <button
-            onClick={generateArt}
-            disabled={loading || !text.trim()}
-            className="px-6 py-2 bg-black text-white disabled:bg-gray-400 hover:bg-gray-800 transition-colors"
-          >
-            {loading ? 'Generating...' : 'Generate Art'}
-          </button>
+    <div className="min-h-screen flex items-center justify-center bg-white">
+      {/* Floating text field - only show if not submitted */}
+      {!submitted && (
+        <div className="w-full max-w-2xl px-8">
+          <div className="relative">
+            <textarea
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              onKeyDown={handleKeyPress}
+              placeholder="Give me a cue — thought, feeling, a metaphor ..."
+              className="w-full h-24 p-4 text-lg border-2 border-gray-200 rounded-lg resize-none 
+                       focus:outline-none focus:border-gray-400 transition-all duration-200
+                       shadow-lg hover:shadow-xl"
+              disabled={loading}
+              autoFocus
+            />
+            
+            {/* Secret dropdown */}
+            {showSecret && (
+              <div className="absolute top-full mt-2 w-full bg-white border-2 border-gray-200 rounded-lg shadow-xl p-4">
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="password"
+                    value={secretKey}
+                    onChange={(e) => setSecretKey(e.target.value)}
+                    placeholder="Secret key for GitHub push..."
+                    className="flex-1 p-2 text-sm border border-gray-200 rounded focus:outline-none focus:border-gray-400"
+                  />
+                  <button
+                    onClick={() => setShowSecret(false)}
+                    className="text-gray-500 hover:text-gray-700"
+                  >
+                    ✕
+                  </button>
+                </div>
+                <p className="text-xs text-gray-500 mt-2">Images will be pushed to GitHub gallery</p>
+              </div>
+            )}
+          </div>
         </div>
+      )}
 
-        {/* Error Display */}
-        {error && (
-          <div className="p-4 bg-red-50 border border-red-200 text-red-700">
-            {error}
-          </div>
-        )}
+      {/* Loading state */}
+      {loading && (
+        <div className="fixed inset-0 flex items-center justify-center bg-white z-50">
+          <div className="w-16 h-16 border-4 border-gray-300 border-t-gray-600 rounded-full animate-spin" />
+        </div>
+      )}
 
-        {/* Loading State */}
-        {loading && (
-          <div className="space-y-4">
-            <div className="h-96 bg-gray-100 loading-pulse" />
-            <p className="text-gray-600 text-center">Analyzing sentiment and creating art...</p>
-          </div>
-        )}
+      {/* Error state */}
+      {error && (
+        <div className="fixed top-8 left-1/2 transform -translate-x-1/2 p-4 bg-red-50 border border-red-200 text-red-700 rounded">
+          {error}
+        </div>
+      )}
 
-        {/* Result Display */}
-        {imageUrl && sentiment && !loading && (
-          <div className="space-y-6">
-            {/* Generated Image */}
-            <div className="border border-gray-200">
+      {/* Images display in column */}
+      {images.length > 0 && !loading && (
+        <div className="w-full max-w-4xl mx-auto p-8 space-y-8">
+          {images.map((imageUrl, index) => (
+            <div key={index} className="w-full">
               <img 
                 src={imageUrl} 
-                alt="Generated art" 
-                className="w-full"
+                alt={`Generated art variation ${index + 1}`} 
+                className="w-full shadow-xl"
               />
             </div>
-
-            {/* Sentiment Scores */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 py-4 border-t border-gray-200">
-              <div>
-                <div className="text-2xl font-light">{Math.round(sentiment.positiveness * 100)}%</div>
-                <div className="text-sm text-gray-600">Positiveness</div>
-              </div>
-              <div>
-                <div className="text-2xl font-light">{Math.round(sentiment.energy * 100)}%</div>
-                <div className="text-sm text-gray-600">Energy</div>
-              </div>
-              <div>
-                <div className="text-2xl font-light">{Math.round(sentiment.complexity * 100)}%</div>
-                <div className="text-sm text-gray-600">Complexity</div>
-              </div>
-              <div>
-                <div className="text-2xl font-light">{Math.round(sentiment.conflictness * 100)}%</div>
-                <div className="text-sm text-gray-600">Conflictness</div>
-              </div>
-            </div>
-
-            {/* Try Again */}
-            <button
-              onClick={() => {
-                setText('');
-                setImageUrl(null);
-                setSentiment(null);
-              }}
-              className="text-gray-600 hover:text-black underline"
-            >
-              Try another text
-            </button>
-          </div>
-        )}
-      </main>
-
-      <footer className="mt-16 py-8 border-t border-gray-200 text-sm text-gray-600">
-        <p>Powered by Claude AI and generative algorithms</p>
-      </footer>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
