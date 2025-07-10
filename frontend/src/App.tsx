@@ -83,6 +83,7 @@ function App() {
                        shadow-lg hover:shadow-xl"
               disabled={loading}
               autoFocus
+              enterKeyHint="send"
             />
             
             {/* Secret dropdown */}

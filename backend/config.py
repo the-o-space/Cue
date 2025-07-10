@@ -32,7 +32,21 @@ SENTIMENT_DIMENSIONS = [
 ]
 
 # Art Generation Parameters
-DEFAULT_IMAGE_SIZE = (1920, 1080)
+DEFAULT_IMAGE_SIZE = (1920, 1080)  # Full HD resolution
+
+# Allow override via environment variables for memory optimization
+IMAGE_WIDTH = int(os.getenv("IMAGE_WIDTH", "1920"))
+IMAGE_HEIGHT = int(os.getenv("IMAGE_HEIGHT", "1080"))
+DEFAULT_IMAGE_SIZE = (IMAGE_WIDTH, IMAGE_HEIGHT)
+
+# Memory optimization modes
+LOW_MEMORY_MODE = os.getenv("LOW_MEMORY_MODE", "false").lower() == "true"
+SEQUENTIAL_PROCESSING = os.getenv("SEQUENTIAL_PROCESSING", "true").lower() == "true"  # Default to sequential
+
+if LOW_MEMORY_MODE:
+    # Use 720p for low memory mode
+    DEFAULT_IMAGE_SIZE = (1280, 720)
+    SEQUENTIAL_PROCESSING = True  # Force sequential in low memory mode
 
 # Color Temperature Mapping (for positiveness)
 COLOR_TEMPERATURES = {

@@ -28,6 +28,8 @@ ExecStart=/root/.local/bin/uv run uvicorn server:app --host 0.0.0.0 --port 8001
 Restart=always
 RestartSec=10
 Environment=PATH=/root/.local/bin:$PATH
+Environment=SEQUENTIAL_PROCESSING=true
+EnvironmentFile=-/opt/Cue/.env
 
 [Install]
 WantedBy=multi-user.target

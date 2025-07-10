@@ -81,7 +81,7 @@ class ArtGenerator:
         return base_map
 
     def generate_all_noise_variations(self, sentiment_scores: Dict[str, float]) -> Dict[str, Image.Image]:
-        """Generate art using all noise algorithms separately.
+        """Generate art using all noise algorithms separately with memory optimization.
         
         Args:
             sentiment_scores: Dictionary with positiveness, energy, complexity, conflictness
@@ -89,6 +89,8 @@ class ArtGenerator:
         Returns:
             Dictionary mapping noise type to PIL Image
         """
+        import gc  # For garbage collection
+        
         # Extract parameters
         positiveness = sentiment_scores.get("positiveness", 0.5)
         energy = sentiment_scores.get("energy", 0.5)
@@ -121,8 +123,62 @@ class ArtGenerator:
                 image = image.filter(ImageFilter.GaussianBlur(radius=blur_radius))
             
             variations[noise_type] = image
+            
+            # Clean up memory after each image generation
+            del height_map
+            del rgb_image
+            gc.collect()
         
         return variations
+    
+    def generate_noise_variation_stream(self, sentiment_scores: Dict[str, float]):
+        """Generate art variations as a generator to minimize memory usage.
+        
+        Args:
+            sentiment_scores: Dictionary with positiveness, energy, complexity, conflictness
+            
+        Yields:
+            Tuple of (noise_type, PIL Image)
+        """
+        import gc
+        
+        # Extract parameters
+        positiveness = sentiment_scores.get("positiveness", 0.5)
+        energy = sentiment_scores.get("energy", 0.5)
+        conflictness = sentiment_scores.get("conflictness", 0.5)
+        
+        # Generate color palette (same for all)
+        color_palette = self.generate_color_palette(positiveness, conflictness)
+        
+        # Generate one image per noise algorithm
+        noise_types = ["terrain", "value", "worley", "gradient"]
+        
+        for noise_type in noise_types:
+            # Generate height map with specific noise
+            height_map = self.generate_height_map(energy, noise_type)
+            
+            # Apply colors to height map
+            rgb_image = self.apply_height_to_color(height_map, color_palette)
+            
+            # Add grain based on energy level
+            grain_intensity = 0.05 + energy * 0.15
+            rgb_image = self.add_grain(rgb_image, grain_intensity)
+            
+            # Convert to PIL Image
+            image = Image.fromarray(rgb_image, mode='RGB')
+            
+            # Apply slight blur for smoother appearance
+            if energy < 0.7:
+                blur_radius = 1.0 - energy * 0.5
+                image = image.filter(ImageFilter.GaussianBlur(radius=blur_radius))
+            
+            # Clean up numpy arrays immediately
+            del height_map
+            del rgb_image
+            gc.collect()
+            
+            # Yield the image
+            yield noise_type, image
 
     def generate_color_palette(self, positiveness: float, conflictness: float) -> List[Tuple[int, int, int]]:
         """Generate a smooth gradient palette between 2-3 colors sampled from temperature range.
@@ -275,39 +331,58 @@ class ArtGenerator:
         return rgb_image
     
     def add_grain(self, image: np.ndarray, intensity: float = 0.1) -> np.ndarray:
-        """Add larger, film-like grain to the image.
+        """Add larger, film-like grain to the image with memory optimization.
         
         Args:
-            image: RGB image array
+            image: RGB image array (modified in-place when possible)
             intensity: Grain strength (0.0 to 1.0)
             
         Returns:
-            Image with grain applied
+            Image with grain applied (same array as input, modified in-place)
         """
         height, width = image.shape[:2]
         
         # Create larger grain by using a smaller resolution and upscaling
         grain_scale = 3  # Make grain 3x larger
-        small_height = height // grain_scale
-        small_width = width // grain_scale
+        small_height = (height + grain_scale - 1) // grain_scale  # Round up
+        small_width = (width + grain_scale - 1) // grain_scale    # Round up
         
         # Generate grain at smaller resolution
         small_grain = np.random.randn(small_height, small_width) * intensity * 40
         
-        # Upscale grain using nearest neighbor for blocky appearance
-        grain = np.repeat(np.repeat(small_grain, grain_scale, axis=0), grain_scale, axis=1)
-        
-        # Crop to exact size if needed
-        grain = grain[:height, :width]
-        
-        # Apply grain to each channel
+        # Process each channel separately to reduce memory usage
         for c in range(3):
-            image[:, :, c] = np.clip(image[:, :, c].astype(float) + grain, 0, 255).astype(np.uint8)
+            # Upscale grain for this channel using repeat
+            grain_row = np.repeat(small_grain, grain_scale, axis=0)[:height]
+            grain_full = np.repeat(grain_row, grain_scale, axis=1)[:, :width]
+            
+            # Apply grain in-place
+            image[:, :, c] = np.clip(
+                image[:, :, c].astype(np.float32) + grain_full, 
+                0, 255
+            ).astype(np.uint8)
+            
+            # Clean up intermediate arrays
+            del grain_row
+            del grain_full
         
-        # Add some additional fine grain for texture
-        fine_grain = np.random.randn(height, width) * intensity * 15
-        for c in range(3):
-            image[:, :, c] = np.clip(image[:, :, c].astype(float) + fine_grain, 0, 255).astype(np.uint8)
+        # Clean up small grain
+        del small_grain
+        
+        # Add fine grain with reduced memory footprint
+        # Process in chunks to avoid large allocations
+        chunk_size = height // 4
+        for i in range(0, height, chunk_size):
+            end_i = min(i + chunk_size, height)
+            fine_grain = np.random.randn(end_i - i, width) * intensity * 15
+            
+            for c in range(3):
+                image[i:end_i, :, c] = np.clip(
+                    image[i:end_i, :, c].astype(np.float32) + fine_grain, 
+                    0, 255
+                ).astype(np.uint8)
+            
+            del fine_grain
         
         return image
     

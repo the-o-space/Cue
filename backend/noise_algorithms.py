@@ -348,6 +348,9 @@ class NoiseGenerator:
         # Interpolate to full resolution
         noise = interpolator(y_grid, x_grid)
         
+        # Ensure the output has the exact requested shape
+        noise = noise[:height, :width]
+        
         # Normalize
         noise = (noise - noise.min()) / (noise.max() - noise.min())
         

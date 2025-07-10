@@ -64,27 +64,68 @@ async def root():
 
 @app.post("/generate", response_model=GenerateResponse)
 async def generate_art(request: GenerateRequest):
-    """Generate art from text."""
+    """Generate art from text with memory optimization."""
     try:
+        import gc  # For explicit garbage collection
+        from config import SEQUENTIAL_PROCESSING
+        
         # Analyze sentiment
         sentiment_scores = sentiment_analyzer.analyze(request.text)
         
-        # Generate all noise variations
-        variations = art_generator.generate_all_noise_variations(sentiment_scores)
-        
-        # Convert images to base64
         image_urls = []
-        image_data_list = []  # Store for GitHub push
+        image_data_list = []  # Store for GitHub push if needed
         
-        for noise_type, image in variations.items():
-            buffer = BytesIO()
-            image.save(buffer, format="PNG")
-            buffer.seek(0)
-            image_bytes = buffer.getvalue()
-            image_base64 = base64.b64encode(image_bytes).decode()
-            image_url = f"data:image/png;base64,{image_base64}"
-            image_urls.append(image_url)
-            image_data_list.append((noise_type, image_bytes))
+        if SEQUENTIAL_PROCESSING:
+            # Use streaming generator for sequential processing
+            for noise_type, image in art_generator.generate_noise_variation_stream(sentiment_scores):
+                buffer = BytesIO()
+                image.save(buffer, format="PNG", optimize=True)
+                buffer.seek(0)
+                image_bytes = buffer.getvalue()
+                
+                # Convert to base64
+                image_base64 = base64.b64encode(image_bytes).decode()
+                image_urls.append(f"data:image/png;base64,{image_base64}")
+                
+                # Only store for GitHub if needed
+                if request.secret_key and request.secret_key == GALLERY_SECRET_KEY:
+                    image_data_list.append((noise_type, image_bytes))
+                
+                # Clean up immediately
+                del image  # Release PIL Image
+                buffer.close()
+                del buffer
+                del image_base64
+                gc.collect()
+        else:
+            # Original batch mode
+            variations = art_generator.generate_all_noise_variations(sentiment_scores)
+            
+            for noise_type, image in variations.items():
+                buffer = BytesIO()
+                image.save(buffer, format="PNG", optimize=True)
+                buffer.seek(0)
+                image_bytes = buffer.getvalue()
+                
+                # Convert to base64 and immediately append
+                image_base64 = base64.b64encode(image_bytes).decode()
+                image_urls.append(f"data:image/png;base64,{image_base64}")
+                
+                # Only store image data if we need to push to GitHub
+                if request.secret_key and request.secret_key == GALLERY_SECRET_KEY:
+                    image_data_list.append((noise_type, image_bytes))
+                
+                # Clean up buffer
+                buffer.close()
+                del buffer
+                del image_base64
+                
+                # Force garbage collection after each image
+                gc.collect()
+            
+            # Clear the variations dict to free PIL Image objects
+            variations.clear()
+            gc.collect()
         
         # Check if we should push to GitHub
         if request.secret_key and request.secret_key == GALLERY_SECRET_KEY:
@@ -97,6 +138,10 @@ async def generate_art(request: GenerateRequest):
             except Exception as e:
                 # Log error but don't fail the request
                 print(f"Failed to push to GitHub: {e}")
+            finally:
+                # Clear image data list after upload
+                image_data_list.clear()
+                gc.collect()
         
         return GenerateResponse(
             images=image_urls,
