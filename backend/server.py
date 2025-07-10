@@ -14,7 +14,7 @@ from pydantic import BaseModel
 
 from sentiment_analyzer import SentimentAnalyzer
 from art_generator import ArtGenerator
-from config import GALLERY_SECRET_KEY, GITHUB_TOKEN, GITHUB_REPO, GITHUB_BRANCH
+from config import GALLERY_SECRET_KEY, GITHUB_TOKEN, GITHUB_REPO
 
 
 class GenerateRequest(BaseModel):
@@ -150,7 +150,7 @@ async def get_latest_gallery_item():
 
 
 def push_to_github_gallery(text: str, sentiment_scores: dict, images: list):
-    """Push images and metadata to the gallery directory in current repository."""
+    """Push images and metadata as a GitHub release."""
     try:
         from github import Github, GithubException
         
@@ -196,8 +196,40 @@ def push_to_github_gallery(text: str, sentiment_scores: dict, images: list):
         text_hash = hashlib.md5(text.encode()).hexdigest()[:8]
         generation_id = f"{timestamp.replace(':', '-').replace('.', '-')}_{text_hash}"
         
-        # Create directory path
-        gallery_path = f"gallery/{generation_id}"
+        # Create release tag
+        tag_name = f"generation-{generation_id}"
+        release_name = f"{text[:50]}{'...' if len(text) > 50 else ''}"
+        
+        # Create release body with sentiment scores
+        release_body = f"""**Text Prompt:**
+{text}
+
+**Sentiment Analysis:**
+- Positiveness: {sentiment_scores.get('positiveness', 0):.2f}
+- Energy: {sentiment_scores.get('energy', 0):.2f}
+- Complexity: {sentiment_scores.get('complexity', 0):.2f}
+- Conflictness: {sentiment_scores.get('conflictness', 0):.2f}
+
+**Generated:** {timestamp}
+**ID:** {generation_id}
+"""
+        
+        # Create the release
+        try:
+            release = repo.create_git_release(
+                tag=tag_name,
+                name=release_name,
+                message=release_body,
+                draft=False,
+                prerelease=False
+            )
+            print(f"Created release: {tag_name}")
+        except GithubException as e:
+            if "already_exists" in str(e):
+                print(f"Release {tag_name} already exists")
+                return
+            else:
+                raise
         
         # Prepare metadata
         metadata = {
@@ -205,78 +237,91 @@ def push_to_github_gallery(text: str, sentiment_scores: dict, images: list):
             "timestamp": timestamp,
             "text": text,
             "sentiment_scores": sentiment_scores,
-            "images": []
+            "images": [],
+            "release_tag": tag_name
         }
         
-        # Upload images
+        # Upload images as release assets
+        import tempfile
+        import os
+        
         for noise_type, image_bytes in images:
             image_filename = f"{noise_type}.png"
-            image_path = f"{gallery_path}/{image_filename}"
             
-            # Create or update file in repo
             try:
-                repo.create_file(
-                    path=image_path,
-                    message=f"Add {noise_type} variation for '{text[:50]}...'",
-                    content=image_bytes,
-                    branch=GITHUB_BRANCH
+                print(f"  → Uploading {image_filename} ({len(image_bytes)} bytes)")
+                
+                # Create temporary file
+                with tempfile.NamedTemporaryFile(delete=False, suffix='.png') as temp_file:
+                    temp_file.write(image_bytes)
+                    temp_path = temp_file.name
+                
+                asset = release.upload_asset(
+                    path=temp_path,
+                    name=image_filename
                 )
+                
+                # Clean up temp file
+                os.unlink(temp_path)
+                
                 metadata["images"].append({
                     "type": noise_type,
-                    "filename": image_filename
+                    "filename": image_filename,
+                    "download_url": asset.browser_download_url
                 })
-            except GithubException as e:
-                if e.status == 422:  # File already exists
-                    contents = repo.get_contents(image_path, ref=GITHUB_BRANCH)
-                    # Handle single file response
-                    if isinstance(contents, list):
-                        contents = contents[0]
-                    repo.update_file(
-                        path=image_path,
-                        message=f"Update {noise_type} variation",
-                        content=image_bytes,
-                        sha=contents.sha,
-                        branch=GITHUB_BRANCH
-                    )
-                else:
-                    raise
+                print(f"  ✓ Uploaded {image_filename} successfully")
+            except Exception as e:
+                print(f"  ✗ Failed to upload {image_filename}: {e}")
+                import traceback
+                print(f"  Full traceback: {traceback.format_exc()}")
+                # Clean up temp file if it exists
+                try:
+                    if 'temp_path' in locals():
+                        os.unlink(temp_path)
+                except:
+                    pass
         
-        # Upload metadata
-        metadata_path = f"{gallery_path}/metadata.json"
+        # Upload metadata as release asset
         metadata_content = json.dumps(metadata, indent=2)
-        
         try:
-            repo.create_file(
-                path=metadata_path,
-                message=f"Add metadata for '{text[:50]}...'",
-                content=metadata_content.encode(),
-                branch=GITHUB_BRANCH
+            print(f"  → Uploading metadata.json ({len(metadata_content)} chars)")
+            
+            # Create temporary file for metadata
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.json', mode='w', encoding='utf-8') as temp_file:
+                temp_file.write(metadata_content)
+                temp_path = temp_file.name
+            
+            metadata_asset = release.upload_asset(
+                path=temp_path,
+                name="metadata.json"
             )
-        except GithubException as e:
-            if e.status == 422:  # File already exists
-                contents = repo.get_contents(metadata_path, ref=GITHUB_BRANCH)
-                # Handle single file response
-                if isinstance(contents, list):
-                    contents = contents[0]
-                repo.update_file(
-                    path=metadata_path,
-                    message=f"Update metadata",
-                    content=metadata_content.encode(),
-                    sha=contents.sha,
-                    branch=GITHUB_BRANCH
-                )
+            
+            # Clean up temp file
+            os.unlink(temp_path)
+            
+            print(f"  ✓ Uploaded metadata.json successfully")
+        except Exception as e:
+            print(f"  ✗ Failed to upload metadata: {e}")
+            import traceback
+            print(f"  Full traceback: {traceback.format_exc()}")
+            # Clean up temp file if it exists
+            try:
+                if 'temp_path' in locals():
+                    os.unlink(temp_path)
+            except:
+                pass
         
-        print(f"Successfully pushed to GitHub: {gallery_path}")
+        print(f"Successfully created release: {release.html_url}")
         
     except ImportError:
         print("PyGithub not installed. Run: pip install PyGithub")
     except Exception as e:
-        print(f"Error pushing to GitHub: {e}")
+        print(f"Error creating release: {e}")
         raise
 
 
 def fetch_gallery_items(limit: int = 10, offset: int = 0) -> List[GalleryItem]:
-    """Fetch gallery items from GitHub repository."""
+    """Fetch gallery items from GitHub releases."""
     try:
         from github import Github
         
@@ -312,46 +357,68 @@ def fetch_gallery_items(limit: int = 10, offset: int = 0) -> List[GalleryItem]:
             
         repo = g.get_repo(repo_name)
         
-        # Get gallery directory contents
-        try:
-            contents = repo.get_contents("gallery", ref=GITHUB_BRANCH)
-            # When getting a directory, it returns a list
-            if not isinstance(contents, list):
-                contents = [contents]
-        except:
-            # Gallery directory might not exist yet
-            return []
+        # Get releases (GitHub API returns them sorted by created_at desc)
+        releases = repo.get_releases()
         
-        # Filter directories and sort by name (newest first)
-        directories = [item for item in contents if item.type == "dir"]
-        directories.sort(key=lambda x: x.name, reverse=True)
+        # Filter only generation releases and apply pagination
+        generation_releases = []
+        count = 0
+        for release in releases:
+            if release.tag_name.startswith("generation-"):
+                if count >= offset:
+                    generation_releases.append(release)
+                    if len(generation_releases) >= limit:
+                        break
+                count += 1
         
-        # Apply pagination
-        directories = directories[offset:offset + limit]
-        
-        # Load metadata for each directory
+        # Load metadata for each release
         items = []
-        for dir_item in directories:
+        for release in generation_releases:
             try:
-                # Fetch metadata.json
-                metadata_file = repo.get_contents(f"{dir_item.path}/metadata.json", ref=GITHUB_BRANCH)
-                # When getting a file, it returns a single ContentFile
-                if isinstance(metadata_file, list):
-                    metadata_file = metadata_file[0]
-                metadata_content = base64.b64decode(metadata_file.content)
-                metadata = json.loads(metadata_content)
+                # Find metadata.json asset
+                metadata_asset = None
+                for asset in release.get_assets():
+                    if asset.name == "metadata.json":
+                        metadata_asset = asset
+                        break
+                
+                if metadata_asset:
+                    # Download and parse metadata
+                    import requests
+                    response = requests.get(metadata_asset.browser_download_url)
+                    metadata = response.json()
+                else:
+                    # Fallback: parse from release info
+                    metadata = {
+                        "id": release.tag_name.replace("generation-", ""),
+                        "timestamp": release.created_at.isoformat(),
+                        "text": release.name,
+                        "sentiment_scores": {},
+                        "images": []
+                    }
+                    
+                    # Add image info from assets
+                    for asset in release.get_assets():
+                        if asset.name.endswith('.png'):
+                            noise_type = asset.name.replace('.png', '')
+                            metadata["images"].append({
+                                "type": noise_type,
+                                "filename": asset.name,
+                                "download_url": asset.browser_download_url
+                            })
                 
                 # Create GalleryItem
                 item = GalleryItem(
-                    id=metadata.get("id", dir_item.name),
-                    timestamp=metadata.get("timestamp", ""),
-                    text=metadata.get("text", ""),
+                    id=metadata.get("id", release.tag_name),
+                    timestamp=metadata.get("timestamp", release.created_at.isoformat()),
+                    text=metadata.get("text", release.name),
                     sentiment_scores=metadata.get("sentiment_scores", {}),
                     images=metadata.get("images", [])
                 )
                 items.append(item)
+                
             except Exception as e:
-                print(f"Error loading metadata for {dir_item.name}: {e}")
+                print(f"Error loading metadata for {release.tag_name}: {e}")
                 continue
         
         return items
@@ -362,9 +429,10 @@ def fetch_gallery_items(limit: int = 10, offset: int = 0) -> List[GalleryItem]:
 
 
 def fetch_gallery_image(generation_id: str, filename: str) -> Optional[str]:
-    """Fetch a specific image from the gallery."""
+    """Fetch a specific image from GitHub releases."""
     try:
         from github import Github
+        import requests
         
         if not GITHUB_TOKEN:
             return None
@@ -397,13 +465,22 @@ def fetch_gallery_image(generation_id: str, filename: str) -> Optional[str]:
             
         repo = g.get_repo(repo_name)
         
-        # Fetch the image
-        image_path = f"gallery/{generation_id}/{filename}"
-        image_file = repo.get_contents(image_path, ref=GITHUB_BRANCH)
-        # When getting a file, it returns a single ContentFile
-        if isinstance(image_file, list):
-            image_file = image_file[0]
-        return image_file.content  # Already base64 encoded
+        # Find the release
+        tag_name = f"generation-{generation_id}"
+        try:
+            release = repo.get_release(tag_name)
+        except:
+            return None
+        
+        # Find the asset
+        for asset in release.get_assets():
+            if asset.name == filename:
+                # Download the image and convert to base64
+                response = requests.get(asset.browser_download_url)
+                if response.status_code == 200:
+                    return base64.b64encode(response.content).decode()
+                
+        return None
         
     except Exception as e:
         print(f"Error fetching image: {e}")

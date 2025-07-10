@@ -16,7 +16,7 @@ GALLERY_SECRET_KEY = os.getenv("GALLERY_SECRET_KEY")
 # GitHub Configuration
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 GITHUB_REPO = os.getenv("GITHUB_REPO", "username/cue-gallery")
-GITHUB_BRANCH = os.getenv("GITHUB_BRANCH", "main")
+# Note: GITHUB_BRANCH not needed for releases
 
 # Claude Model Configuration
 MODEL_NAME = "claude-3-5-sonnet-20241022"

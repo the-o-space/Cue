@@ -1,6 +1,6 @@
 # Generated art and logs
 output/
-# Note: gallery/ is NOT ignored - it's pushed to the repository!
+# Note: Gallery images are stored as GitHub Releases, not in git
 
 # Environment variables
 .env
