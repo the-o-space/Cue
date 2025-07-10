@@ -1,0 +1,29 @@
+{
+  "id": "2025-07-10T17-07-26-452432_2960be46",
+  "timestamp": "2025-07-10T17:07:26.452432",
+  "text": "I'm feeling nice, and beloved, and I want to cry tears of joyh",
+  "sentiment_scores": {
+    "positiveness": 0.9,
+    "energy": 0.6,
+    "complexity": 0.3,
+    "conflictness": 0.2
+  },
+  "images": [
+    {
+      "type": "terrain",
+      "filename": "terrain.png"
+    },
+    {
+      "type": "value",
+      "filename": "value.png"
+    },
+    {
+      "type": "worley",
+      "filename": "worley.png"
+    },
+    {
+      "type": "gradient",
+      "filename": "gradient.png"
+    }
+  ]
+}
