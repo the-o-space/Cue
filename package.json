@@ -4,17 +4,16 @@
   "description": "Experimental generative art using sentiment analysis",
   "private": true,
   "scripts": {
-    "dev": "concurrently \"npm run dev:frontend\" \"npm run dev:backend\"",
+    "dev": "concurrently \"npm:dev:frontend\" \"npm:dev:backend\"",
     "dev:frontend": "cd frontend && npm run dev",
     "dev:backend": "cd backend && uv run uvicorn server:app --host 0.0.0.0 --port 8001 --reload",
     "build": "npm run build:frontend && npm run build:backend",
     "build:frontend": "cd frontend && npm run build",
     "build:backend": "cd backend && uv sync",
-    "prod": "npm run build && npm run deploy:prod",
-    "deploy:prod": "node scripts/deploy-production.js",
-    "status": "sudo systemctl status cue-backend",
-    "logs": "sudo journalctl -u cue-backend -f",
-    "restart": "sudo systemctl restart cue-backend && sudo systemctl reload nginx"
+    "serve": "ENV_SERVICE_FILE=./ops/systemd/.env.systemd ./ops/systemd/run.sh",
+    "status": "systemctl status cue-backend",
+    "logs": "journalctl -u cue-backend -f",
+    "restart": "systemctl restart cue-backend && systemctl reload nginx"
   },
   "devDependencies": {
     "concurrently": "^8.2.0"

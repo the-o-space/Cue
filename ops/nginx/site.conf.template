@@ -1,25 +1,27 @@
+## Minimal Nginx template for Cue (single HTTP server)
+# Variables:
+# - ${SERVER_NAME}     e.g., example.local
+# - ${STATIC_ROOT}     e.g., /opt/sites/cue/frontend/dist
+# - ${API_UPSTREAM}    e.g., http://127.0.0.1:8001
+
 server {
     listen 80;
-    server_name cue.the-o.space;
-    
-    # Frontend static files (after build)
-    root /opt/Cue/frontend/dist;
+    listen [::]:80;
+    server_name ${SERVER_NAME};
+
+    root ${STATIC_ROOT};
     index index.html;
-    
-    # API proxy
+
     location /api/ {
-        proxy_pass http://localhost:8001/;
+        proxy_pass ${API_UPSTREAM}/;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
-        
-        # Longer timeout for art generation
         proxy_read_timeout 60s;
     }
-    
-    # Frontend routes (SPA support)
+
     location / {
         try_files $uri $uri/ /index.html;
     }
-} 
+}

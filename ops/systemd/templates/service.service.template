@@ -1,0 +1,15 @@
+[Unit]
+Description=${DESCRIPTION}
+After=network.target
+
+[Service]
+Type=simple
+User=${USER}
+WorkingDirectory=${WORKING_DIRECTORY}
+ExecStart=${EXEC_START}
+Restart=always
+RestartSec=10
+EnvironmentFile=-${ENV_FILE}
+
+[Install]
+WantedBy=multi-user.target

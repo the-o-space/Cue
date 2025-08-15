@@ -67,3 +67,8 @@ node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log* 
+
+# Local Nginx confs (generated, not committed)
+ops/nginx/*.conf
+ops/systemd/*.service
+ops/systemd/.env.systemd
